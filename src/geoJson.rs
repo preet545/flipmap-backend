@@ -5,6 +5,8 @@
 // openrouteservice API flips it to lon, lat :(
 use serde::Deserialize;
 
+// TODO make coordinate struct
+
 #[derive(Deserialize, Debug)]
 pub enum Type {
     Geometry,
@@ -39,7 +41,7 @@ pub struct Properties {
 
 #[derive(Debug, Deserialize)]
 pub struct Geometry {
-    pub coordinates: Vec<Vec<f64>>,
+    pub coordinates: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, Deserialize)]
