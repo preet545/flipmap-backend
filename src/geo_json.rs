@@ -19,11 +19,20 @@ pub struct Bbox {
     pub nw: Coordinate,
     pub se: Coordinate,
 }
+
 #[derive(Deserialize, Debug)]
 pub enum Type {
     Geometry,
     Feature,
     FeatureCollection,
+    LineString,
+    Point,
+}
+
+#[derive(Deserialize, Debug)]
+pub enum GeometryCoordinates {
+    LineString(Vec<Coordinate>),
+    Point(Coordinate)
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,8 +63,9 @@ pub struct Properties {
 
 #[derive(Debug, Deserialize)]
 pub struct Geometry {
-    pub coordinates: Vec<f64, f64>,
+    pub coordinates: GeometryCoordinates,
 }
+
 
 #[derive(Debug, Deserialize)]
 pub struct Segment {

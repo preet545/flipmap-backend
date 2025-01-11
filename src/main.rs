@@ -1,44 +1,79 @@
-mod geo_json;
+// mod geo_json;
 mod graphics;
 
+use std::io::{Read, Write};
+use reqwest;
+use std::env;
+
+// use geo::LineString;
 use hello_osm::map_range;
-use std::{error::Error, io::{self, stdout, Read, Write}};
+
+// TODO phase this out and receive coordinates
+const USER_LAT : &str = "44.55955383903737";
+const USER_LON : &str = "-123.27702371574132";
 
 fn main() {
-    let current_lat = "44.55955383903737";
-    let current_lon = "-123.27702371574132";
     let mut destination = String::new();
+    
+    // GET DESTINATION
+    print!("desired destination: ");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut destination).expect("couldn't save that string");
 
-    // print!("desired destination: ");
-    // let _ = io::stdout().flush();
-    // io::stdin().read_line(&mut destination).expect("couldn't save that string");
+    let mut url = reqwest::Url::parse("https://photon.komoot.io/api/").expect("broken");
+    let params = [("q", destination.to_string()), ("lat", USER_LAT.to_string()), ("lon", USER_LON.to_string())];
+    for (key, val) in params { url.query_pairs_mut().append_pair(&key, &val); }
+    println!("{:?}", url.query_pairs().collect::<Vec<_>>());
 
-    // let mut url = reqwest::Url::parse("https://photon.komoot.io/api/").expect("broken");
-    // let params = [("q", destination.to_string()), ("lat", current_lat.to_string()), ("lon", current_lon.to_string())];
-    // for (key, val) in params { url.query_pairs_mut().append_pair(&key, &val); }
+    let mut search_results_str = String::new();
+    let _ = reqwest::blocking::get(url).unwrap().read_to_string(&mut search_results_str);
 
-    // let mut body = String::new();
-    // let _ = reqwest::blocking::get(url).unwrap().read_to_string(&mut body);
+    // SEARCH (DESTINATION) PARSING
+    // let search_results_str = std::fs::read_to_string("data/photon.json").unwrap();
+    let search_json : geojson::FeatureCollection = serde_json::from_str(&search_results_str).unwrap();
 
-    // println!("body = {body:?}");
+    // let results = &search_json.features[0].properties;
+    let result_coords = match &search_json.features[0].geometry.as_ref().unwrap().value {
+        geojson::Value::Point(x) => x,
+        _ => panic!("Destination shold be a Point"),
+    };
+    println!("Found at {}, {}", result_coords[1], result_coords[0]);
 
-    // PLACEHOLDER
-    let route_str = std::fs::read_to_string("data/route2.json").unwrap();
-    let search_results_str = std::fs::read_to_string("data/photon.json").unwrap();
+    let openroute_key = env::var("OPENROUTE_API_KEY").unwrap();
+    let mut url = reqwest::Url::parse("https://api.openrouteservice.org/v2/directions/driving-car").expect("broken");
+    let start_str = USER_LON.to_owned() + "," + USER_LAT;
+    let end_str = result_coords[0].to_string() + "," + &result_coords[1].to_string();
+    let params = [("api_key", openroute_key.to_string()), ("start", start_str.to_string()), ("end", end_str.to_string())];
+    for (key, val) in params { url.query_pairs_mut().append_pair(&key, &val); }
 
-    let route_json : geo_json::GeoJson = serde_json::from_str(&route_str).unwrap();
-    let search_json : geo_json::GeoJson = serde_json::from_str(&route_str).unwrap();
+    // ROUTING
+    let mut route_str = String::new();
+    let _ = reqwest::blocking::get(url).unwrap().read_to_string(&mut route_str);
 
-    let features = &route_json.features.unwrap();
+
+    let route_json : geojson::FeatureCollection = serde_json::from_str(&route_str).unwrap();
+
+    let features = &route_json.features;
     let geometry = features[0].geometry.as_ref().unwrap();
-    let points = &geometry.coordinates;
-    let bbox = &features[0].bbox;
+    let points = match &geometry.value {
+        geojson::Value::LineString(coords) => coords,
+        _ => panic!("route should be a LineString")
+    };
+    let bbox = features[0].bbox.as_ref().expect("what");
 
-    // convert lon,lat to x,y (TODO update to Haversine distance)
-    let scaled_points = points.iter().map(|coord|
-        (map_range(coord.lat, bbox.0, bbox.2, -1.0, 1.0),
-         map_range(coord.lon, bbox.1, bbox.3, -1.0, 1.0))
+    // // convert lon,lat to x,y (TODO update to Haversine distance)
+    // What happens if we cross the meridian/antimeridian? What about the poles (probably no routes
+    // thru those tho)
+    // ----*
+    // |   |
+    // |   |
+    // *----
+    // bbox is (sw, ne)
+    let scaled_route : Vec<(f64, f64)> = points.iter().map(|coord|
+        (map_range(coord[0], bbox[0], bbox[2], -1.0, 1.0),
+         map_range(coord[1], bbox[1], bbox[3], -1.0, 1.0))
     ).collect();
 
-    pollster::block_on(graphics::run(&scaled_points));
+
+    pollster::block_on(graphics::run(&scaled_route));
 }
