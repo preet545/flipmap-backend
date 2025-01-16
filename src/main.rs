@@ -9,8 +9,8 @@ use std::env;
 use hello_osm::map_range;
 
 // TODO phase this out and receive coordinates
-const USER_LAT : &str = "44.55955383903737";
-const USER_LON : &str = "-123.27702371574132";
+const USER_LAT : &str = "44.560975";
+const USER_LON : &str = "-123.275227";
 
 fn main() {
     let mut destination = String::new();
@@ -23,13 +23,11 @@ fn main() {
     let mut url = reqwest::Url::parse("https://photon.komoot.io/api/").expect("broken");
     let params = [("q", destination.to_string()), ("lat", USER_LAT.to_string()), ("lon", USER_LON.to_string())];
     for (key, val) in params { url.query_pairs_mut().append_pair(&key, &val); }
-    println!("{:?}", url.query_pairs().collect::<Vec<_>>());
 
     let mut search_results_str = String::new();
     let _ = reqwest::blocking::get(url).unwrap().read_to_string(&mut search_results_str);
 
     // SEARCH (DESTINATION) PARSING
-    // let search_results_str = std::fs::read_to_string("data/photon.json").unwrap();
     let search_json : geojson::FeatureCollection = serde_json::from_str(&search_results_str).unwrap();
 
     // let results = &search_json.features[0].properties;
@@ -50,7 +48,6 @@ fn main() {
     let mut route_str = String::new();
     let _ = reqwest::blocking::get(url).unwrap().read_to_string(&mut route_str);
 
-
     let route_json : geojson::FeatureCollection = serde_json::from_str(&route_str).unwrap();
 
     let features = &route_json.features;
@@ -59,7 +56,7 @@ fn main() {
         geojson::Value::LineString(coords) => coords,
         _ => panic!("route should be a LineString")
     };
-    let bbox = features[0].bbox.as_ref().expect("what");
+    let bbox = features[0].bbox.as_ref().expect("how did u lose the bbox");
 
     // // convert lon,lat to x,y (TODO update to Haversine distance)
     // What happens if we cross the meridian/antimeridian? What about the poles (probably no routes
@@ -68,7 +65,7 @@ fn main() {
     // |   |
     // |   |
     // *----
-    // bbox is (sw, ne)
+    // GeoJSON bbox is (sw, ne) btw
     let scaled_route : Vec<(f64, f64)> = points.iter().map(|coord|
         (map_range(coord[0], bbox[0], bbox[2], -1.0, 1.0),
          map_range(coord[1], bbox[1], bbox[3], -1.0, 1.0))
