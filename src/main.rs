@@ -1,9 +1,8 @@
-use futures::StreamExt;
+use geo_json::Coordinate;
 use serde::Serialize;
 use std::{env, vec};
 use std::io::{self, BufRead};
 use std::time::Duration;
-use futures::stream::FuturesUnordered; // Feels like I should be able to use tokio to do this??
 
 mod geo_json;
 const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"),);
@@ -20,16 +19,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
+// Unlikely to use these outside demo
+use futures::StreamExt;
+use futures::stream::FuturesUnordered; // Feels like I should be able to use tokio to do this??
+use regex::Regex;
 // An interactive proof-of-concept for making external API calls
 async fn poc_menu() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let stdin = io::stdin();
-    let mut buffer = String::with_capacity(2048); // Maybe a lot for a line?
+    let mut buffer = String::with_capacity(2048);
 
     loop {
-        println!("Choose an option: 1) Route query 2) Geocode query (Ctrl+D to exit)");
-        stdin.lock().read_line(&mut buffer)?; //TODO: do I need to care about unlocking?
+        println!("Choose an option:\n  1) Route query\n  2) Reverse Geocode query\n  3) Geocode query\n  (Ctrl+D to exit)");
+        stdin.lock().read_line(&mut buffer)?;
 
         match buffer.trim() {
+            // Route Query
             "1" => {
                 // Demonstrate running a few requests at once and waiting async for the joins
                 // OSU to PDX
@@ -80,14 +84,42 @@ async fn poc_menu() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     */
                 }
             }
+            // Reverse Geocode
             "2" => {
-                // TODO: This!
-                println!("Enter a single coordinate as (lon,lat):");
-                let mut coord_input = String::new();
-                stdin.read_line(&mut coord_input)?;
-                // Here you would parse the input and call geocode_request
-                // For now, just print the input
-                println!("Geocode query with coordinate: {}", coord_input);
+                println!("Enter a single coordinate as (lon,lat) or nothing for prefilled test:");
+                buffer.clear();
+                stdin.read_line(&mut buffer)?;
+                // Try to regex out some coordinates or just use the computing center
+                const MILNE: geo_json::Coordinate = geo_json::Coordinate{
+                    lat: 44.566388,
+                    lon: -123.275304,}; 
+                let re = Regex::new(r"\((-?\d{1,3}\.\d*),(-?\d{1,3}\.\d*)\)")?;
+                let coord: geo_json::Coordinate = re.captures(&buffer).and_then(|coords| {
+                    let lon = coords.get(1)?.as_str().parse::<f64>().ok()?;
+                    let lat = coords.get(2)?.as_str().parse::<f64>().ok()?;
+                    Some(Coordinate{lat,lon})}).unwrap_or(MILNE);
+                let res = CLIENT.photon_reverse(coord).send().await?;
+                dbg!(&res);
+                dbg!(&res.text().await?);
+            }
+            // Geocode
+            "3" => {
+                const ANCHOR_LAT: f64 = 44.56580672743879;
+                const ANCHOR_LON: f64 = -123.28215624028414;
+
+                println!("Enter a place name or nothing for prefilled test:\n    (search anchored @ OSU)");
+                buffer.clear();
+                stdin.read_line(&mut buffer)?;
+                let q = Some(buffer.clone().trim()).filter(|s| !s.is_empty()).unwrap_or("Downward Dog").to_string();
+                let req = PhotonGeocodeRequest{
+                    limit: 5,
+                    query: q,
+                    lat: Some(ANCHOR_LAT),
+                    lon: Some(ANCHOR_LON),
+                };
+                let res = CLIENT.photon(&req).send().await?;
+                dbg!(&res);
+                dbg!(&res.text().await?);
             }
             "" => {
                 // I think only EOF will make this happen
@@ -103,9 +135,20 @@ async fn poc_menu() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 // TODO: Constructor maybe
 #[derive(Serialize)]
 struct OpenRouteRequest {
-    //TODO: Coordinates can (should?) be waypoint vecs, not just start-end
+    //TODO: Use geojson types to more closely follow 'Position' type
     coordinates: [geo_json::Coordinate; 2],
     instructions: bool,
+}
+
+#[derive(Serialize)]
+struct PhotonGeocodeRequest { 
+    limit: u8, // Probably just 1 for "where am I" and ~10 for a search
+    #[serde(rename(serialize="q"))]
+    query: String, // Might be possible to use str here
+    // TODO: Quick and dirty optional 'anchor' here 
+    // in the future we'll use a geojson type with proper deserialization
+    lat: Option<f64>,
+    lon: Option<f64>,
 }
 
 pub struct ExternalRequester {
@@ -139,5 +182,16 @@ impl ExternalRequester {
             .header("Content-Type", "application/json")
             .header("Authorization", &self.open_route_service_key)
             .json(req)
+    }
+
+    fn photon_reverse(&self, coord: geo_json::Coordinate) -> reqwest::RequestBuilder {
+        // TODO: This sucks but we've got a different serializer for ORS already. We'll use
+        // geojson types in the future anyway
+        let q = [("lon",coord.lon),("lat",coord.lat)];
+        self.client.get("https://photon.komoot.io/reverse").query(&q)
+    }
+
+    fn photon(&self, req: &PhotonGeocodeRequest) -> reqwest::RequestBuilder {
+        self.client.get("https://photon.komoot.io/api/").query(req)
     }
 }

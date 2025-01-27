@@ -1,3 +1,6 @@
+// TODO: Use the external geo-json crate instead of this, will need to handle serialization of
+// Coordinate there
+
 //      lat,               lon
 // PDX: 45.528104715146554, -122.67683019518431
 // OSU: 44.56580672743879,  -123.28215624028414
