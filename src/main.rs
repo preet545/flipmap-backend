@@ -41,12 +41,10 @@ pub struct RouteRequest {
 
 #[derive(Serialize)]
 pub struct RouteResponse {
-    // A position vec, but concatenated so it's just vec<num...> instead of vec<vec<num..>..>
+    // This is just a flattened LineString. Requested for easier processing on app.
     pub route: Vec<f64>,
 }
 
-// FIXME: This seems to run but not do anything?
-#[axum::debug_handler]
 async fn route(
     State(client): State<Arc<ExternalRequester>>,
     Json(params): Json<RouteRequest>,
@@ -78,7 +76,7 @@ async fn route(
     // All we want is the coordinates of the point. FeatureCollection -> Feature -> Point
     let end_coord: Position = match &res_features.features[0].geometry.as_ref().unwrap().value {
         geojson::Value::Point(x) => x.clone(),
-        _ => panic!("Got non-position geometry value"),
+        _ => panic!("Got non-position geometry value from Photon"),
     };
 
     // Second request to actually get the route
@@ -90,19 +88,13 @@ async fn route(
     let res: reqwest::Response = client.ors(&req).send().await.unwrap();
     let res_features = res.json::<geojson::FeatureCollection>().await.unwrap();
 
-    // I call this the 'sausage factory'
-    let resp = RouteResponse {
-        route: res_features
-            .into_iter()
-            .filter_map(|feat| feat.geometry)
-            .filter_map(|geo| match geo.value {
-                geojson::Value::Point(pt) => Some(pt),
-                _ => None,
-            })
-            .collect::<Vec<Vec<f64>>>()
-            .into_iter()
-            .flatten()
-            .collect(),
-    };
-    (StatusCode::OK, Json(resp))
+    // Grab the LineString from the ORS route, then remove interior arrays to make app processing easier
+    let route: Vec<f64> = match &res_features.features[0].geometry.as_ref().unwrap().value {
+        geojson::Value::LineString(x) => x.clone(),
+        _ => panic!("Got non-linestring geometry value from ORS"),
+    }
+    .into_iter()
+    .flatten()
+    .collect();
+    (StatusCode::OK, Json(RouteResponse { route }))
 }
