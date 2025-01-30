@@ -1,28 +1,21 @@
 use axum::{http::StatusCode, response::IntoResponse, routing::post, Json, Router};
-use std::env;
 use geojson::Position;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::sync::Arc;
 mod consts;
 mod requester;
 
 use crate::requester::{ExternalRequester, OpenRouteRequest, PhotonGeocodeRequest};
-// I think the struct is thread safe (reqwest client has an arc internally) but the compiler
-// is really mad if I don't use sync stuff to make this static
-// TODO: Initialize this in a less dirty/global way later on
 use axum::extract::State;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Arc::new(ExternalRequester::new());
-    //const CLIENT: LazyLock<ExternalRequester> = LazyLock::new(|| ExternalRequester::new());
-    //let CLIENT: ExternalRequester = ExternalRequester::new();
     let app: Router = Router::new()
         .route("/route", post(route))
         .with_state(client);
 
-    // Take an IP address and a port number from the command line instead of this static str. Then,
-    // print it before starting the listener AI!
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
         eprintln!("Usage: {} <IP> <PORT>", args[0]);
@@ -30,11 +23,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     let ip = &args[1];
     let port = &args[2];
+
     println!("Starting server on {}:{}", ip, port);
-    let listener = tokio::net::TcpListener::bind(format!("{}:{}", ip, port)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(format!("{}:{}", ip, port))
+        .await
+        .unwrap();
     axum::serve(listener, app).await.unwrap();
     Ok(())
-    // AI: Removed AI comment
 }
 
 #[derive(Deserialize)]
@@ -50,6 +45,7 @@ pub struct RouteResponse {
     pub route: Vec<f64>,
 }
 
+// FIXME: This seems to run but not do anything?
 #[axum::debug_handler]
 async fn route(
     State(client): State<Arc<ExternalRequester>>,
