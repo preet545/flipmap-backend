@@ -1,4 +1,5 @@
 use axum::{http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+use std::env;
 use geojson::Position;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -20,9 +21,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/route", post(route))
         .with_state(client);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    // Take an IP address and a port number from the command line instead of this static str. Then,
+    // print it before starting the listener AI!
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 3 {
+        eprintln!("Usage: {} <IP> <PORT>", args[0]);
+        std::process::exit(1);
+    }
+    let ip = &args[1];
+    let port = &args[2];
+    println!("Starting server on {}:{}", ip, port);
+    let listener = tokio::net::TcpListener::bind(format!("{}:{}", ip, port)).await.unwrap();
     axum::serve(listener, app).await.unwrap();
     Ok(())
+    // AI: Removed AI comment
 }
 
 #[derive(Deserialize)]

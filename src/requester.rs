@@ -28,7 +28,6 @@ pub struct PhotonRevGeocodeRequest {
     pub lon: f64,
 }
 
-#[derive(Clone)]
 pub struct ExternalRequester {
     client: reqwest::Client,
     open_route_service_key: String,
