@@ -5,13 +5,13 @@ use serde::Serialize;
 use crate::consts;
 
 // TODO: Constructor for both these maybe
-#[derive(Serialize)]
+#[derive(Serialize,Debug)]
 pub struct OpenRouteRequest {
     pub coordinates: Vec<geojson::Position>,
     pub instructions: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize,Debug)]
 pub struct PhotonGeocodeRequest { 
     pub limit: u8, // Probably just 1 for "where am I" and ~10 for a search
     #[serde(rename(serialize="q"))]

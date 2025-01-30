@@ -71,6 +71,7 @@ async fn route(
         limit: 1,
         query: params.query,
     };
+    dbg!(&req); //TODO: Replace all this with a proper trace layer
     let res: reqwest::Response = client.photon(&req).send().await.unwrap();
     let res_features = res.json::<geojson::FeatureCollection>().await.unwrap();
     // All we want is the coordinates of the point. FeatureCollection -> Feature -> Point
@@ -85,6 +86,7 @@ async fn route(
         instructions: false,
         coordinates: vec![start_coord, end_coord],
     };
+    dbg!(&req);
     let res: reqwest::Response = client.ors(&req).send().await.unwrap();
     let res_features = res.json::<geojson::FeatureCollection>().await.unwrap();
 
@@ -96,5 +98,6 @@ async fn route(
     .into_iter()
     .flatten()
     .collect();
+    //dbg!(&route) Or don't
     (StatusCode::OK, Json(RouteResponse { route }))
 }
